@@ -1,12 +1,9 @@
-# atualizar_espelho_resiliente.py
+# atualizar_espelho.py
 # -*- coding: utf-8 -*-
 
 import re
 import random
 import time
-import os
-import json
-import base64
 from datetime import datetime, date
 from typing import List, Any, Dict, Tuple
 
@@ -91,7 +88,7 @@ def with_retry(call, desc: str, max_tries: int = 9, base: float = 0.8, cap: floa
                 print(f"❌ {desc}: falhou (tentativa {attempt}) → {e}")
                 raise
             delay = 1.0 + random.uniform(0, 0.5)
-            print(f"⚠️ {desc}: erro inesperado ({e}). Retry leve em {delay:.1f}s…")
+            print(f"⚠️ Erro inesperado ({e}). Retry leve em {delay:.1f}s…")
             time.sleep(delay)
             attempt += 1
 
@@ -200,7 +197,6 @@ def calc_num_rows_from_columns(cols_dict: Dict[str, List[Any]]) -> int:
     """
     max_len = 0
     for col, values in cols_dict.items():
-        # tira vazios no final
         v = list(values)
         while v and (v[-1] == "" or str(v[-1]).strip() == ""):
             v.pop()
@@ -216,23 +212,8 @@ def run_once():
     scopes = ["https://www.googleapis.com/auth/spreadsheets",
               "https://www.googleapis.com/auth/drive"]
 
-    # Tenta usar credenciais do ambiente (GitHub Actions) via base64
-    b64 = os.environ.get("GOOGLE_CREDENTIALS_B64")
-
-    if b64:
-        try:
-            raw = base64.b64decode(b64)
-            info = json.loads(raw.decode("utf-8"))
-            print("🔑 Usando credenciais do ambiente (GOOGLE_CREDENTIALS_B64).")
-            creds = Credentials.from_service_account_info(info, scopes=scopes)
-        except Exception as e:
-            print(f"❌ Erro ao decodificar GOOGLE_CREDENTIALS_B64: {e}")
-            raise
-    else:
-        # Caminho local: usa arquivo credenciais.json
-        print(f"📁 GOOGLE_CREDENTIALS_B64 não encontrada. Usando arquivo {CAMINHO_CRED}.")
-        creds = Credentials.from_service_account_file(CAMINHO_CRED, scopes=scopes)
-
+    # Usa credenciais a partir do arquivo credenciais.json
+    creds = Credentials.from_service_account_file(CAMINHO_CRED, scopes=scopes)
     gc = gspread.authorize(creds)
     print("✅ Autenticado.")
 
@@ -265,8 +246,6 @@ def run_once():
     data_cols: Dict[str, List[Any]] = {}
     for i, (src_col, _, _tipo) in enumerate(MAPPINGS):
         col_vals_raw = batch[i] if i < len(batch) else []
-        # wks.batch_get retorna lista de linhas (cada linha é uma lista com 1 célula)
-        # Converter p/ lista simples de tamanho MAX_ROWS_SCAN
         flat = [row[0] if row else "" for row in col_vals_raw]
         data_cols[src_col] = flat
 
@@ -320,7 +299,6 @@ def main():
             return
         except APIError as e:
             if is_retryable_api_error(e) and attempt < MAX_RUN_TRIES:
-                # Reseta o fluxo inteiro (nova sessão/handles ajuda quando o backend do Google está instável)
                 delay = 5.0 * attempt + random.uniform(0, 1.5)
                 print(f"⚠️ APIError final nesta passada ({e}). Reiniciando fluxo em {delay:.1f}s (tentativa {attempt}/{MAX_RUN_TRIES})…")
                 time.sleep(delay)
