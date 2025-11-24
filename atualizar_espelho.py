@@ -4,6 +4,9 @@
 import re
 import random
 import time
+import os
+import json
+import base64
 from datetime import datetime, date
 from typing import List, Any, Dict, Tuple
 
@@ -212,7 +215,24 @@ def run_once():
     print("🔐 Autenticando…")
     scopes = ["https://www.googleapis.com/auth/spreadsheets",
               "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file(CAMINHO_CRED, scopes=scopes)
+
+    # Tenta usar credenciais do ambiente (GitHub Actions) via base64
+    b64 = os.environ.get("GOOGLE_CREDENTIALS_B64")
+
+    if b64:
+        try:
+            raw = base64.b64decode(b64)
+            info = json.loads(raw.decode("utf-8"))
+            print("🔑 Usando credenciais do ambiente (GOOGLE_CREDENTIALS_B64).")
+            creds = Credentials.from_service_account_info(info, scopes=scopes)
+        except Exception as e:
+            print(f"❌ Erro ao decodificar GOOGLE_CREDENTIALS_B64: {e}")
+            raise
+    else:
+        # Caminho local: usa arquivo credenciais.json
+        print(f"📁 GOOGLE_CREDENTIALS_B64 não encontrada. Usando arquivo {CAMINHO_CRED}.")
+        creds = Credentials.from_service_account_file(CAMINHO_CRED, scopes=scopes)
+
     gc = gspread.authorize(creds)
     print("✅ Autenticado.")
 
