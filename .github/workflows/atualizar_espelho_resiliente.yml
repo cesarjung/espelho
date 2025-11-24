@@ -1,11 +1,11 @@
-name: Atualizar Espelho Resiliente
+name: Atualizar Espelho
 
 on:
   schedule:
-    # 08:00, 11:00, 13:00, 16:00 e 19:00 em America/Recife (UTC-3)
+    # 08:00, 11:00, 13:00, 16:00 e 19:00 em America/Sao_Paulo (UTC-3)
     # → 11:00, 14:00, 16:00, 19:00, 22:00 UTC
     - cron: '0 11,14,16,19,22 * * *'
-  workflow_dispatch:  # permite rodar manualmente pelo GitHub
+  workflow_dispatch:
 
 jobs:
   run-script:
@@ -14,6 +14,11 @@ jobs:
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
+
+      - name: Listar arquivos para debug
+        run: |
+          pwd
+          ls -R
 
       - name: Configurar Python
         uses: actions/setup-python@v5
@@ -29,6 +34,6 @@ jobs:
         run: |
           echo "${{ secrets.GOOGLE_CREDENTIALS }}" > credenciais.json
 
-      - name: Executar atualizar_espelho.py
+      - name: Executar script
         run: |
-          python atualizar_espelho_resiliente.py
+          python atualizar_espelho.py
