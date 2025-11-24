@@ -29,6 +29,6 @@ jobs:
         run: |
           echo "${{ secrets.GOOGLE_CREDENTIALS }}" > credenciais.json
 
-      - name: Executar atualizar_espelho_resiliente.py
+      - name: Executar atualizar_espelho.py
         run: |
           python atualizar_espelho_resiliente.py
