@@ -2,13 +2,8 @@ name: Atualizar Espelho
 
 on:
   schedule:
-    # Executa às 08:00, 11:00, 13:00, 16:00 e 19:00 (Horário de Brasília)
-    # Brasília = UTC-3 → horários convertidos:
-    # 08:00 → 11:00 UTC
-    # 11:00 → 14:00 UTC
-    # 13:00 → 16:00 UTC
-    # 16:00 → 19:00 UTC
-    # 19:00 → 22:00 UTC
+    # 08:00, 11:00, 13:00, 16:00 e 19:00 em Brasília (UTC-3)
+    # → 11:00, 14:00, 16:00, 19:00, 22:00 UTC
     - cron: '0 11,14,16,19,22 * * *'
   workflow_dispatch:
 
@@ -35,19 +30,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Criar credenciais.json a partir do Secret
-        shell: bash
+      - name: Criar credenciais.json a partir do Secret (base64)
         run: |
-          cat > credenciais.json << 'EOF'
-          ${{ secrets.GOOGLE_CREDENTIALS }}
+          python - << 'EOF'
+          import base64
+          import os
+
+          b64 = os.environ["GOOGLE_CREDENTIALS_B64"]
+          data = base64.b64decode(b64)
+
+          with open("credenciais.json", "wb") as f:
+              f.write(data)
+
+          print("credenciais.json criado com", len(data), "bytes")
           EOF
+        env:
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CREDENTIALS_B64 }}
 
       - name: Conferir arquivo de credenciais (debug)
         run: |
           echo "Tamanho do arquivo:"
           ls -lh credenciais.json
-          echo "Primeiras linhas:"
-          head -n 5 credenciais.json
 
       - name: Executar script de atualização
         run: |
