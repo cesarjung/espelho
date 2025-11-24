@@ -2,8 +2,13 @@ name: Atualizar Espelho
 
 on:
   schedule:
-    # 08:00, 11:00, 13:00, 16:00 e 19:00 em America/Sao_Paulo (UTC-3)
-    # → 11:00, 14:00, 16:00, 19:00, 22:00 UTC
+    # Executa às 08:00, 11:00, 13:00, 16:00 e 19:00 (Horário de Brasília)
+    # Brasília = UTC-3 → horários convertidos:
+    # 08:00 → 11:00 UTC
+    # 11:00 → 14:00 UTC
+    # 13:00 → 16:00 UTC
+    # 16:00 → 19:00 UTC
+    # 19:00 → 22:00 UTC
     - cron: '0 11,14,16,19,22 * * *'
   workflow_dispatch:
 
@@ -12,15 +17,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do código
+      - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Listar arquivos para debug
+      - name: Listar estrutura (debug)
         run: |
           pwd
           ls -R
 
-      - name: Configurar Python
+      - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -31,9 +36,19 @@ jobs:
           pip install -r requirements.txt
 
       - name: Criar credenciais.json a partir do Secret
+        shell: bash
         run: |
-          echo "${{ secrets.GOOGLE_CREDENTIALS }}" > credenciais.json
+          cat > credenciais.json << 'EOF'
+          ${{ secrets.GOOGLE_CREDENTIALS }}
+          EOF
 
-      - name: Executar script
+      - name: Conferir arquivo de credenciais (debug)
+        run: |
+          echo "Tamanho do arquivo:"
+          ls -lh credenciais.json
+          echo "Primeiras linhas:"
+          head -n 5 credenciais.json
+
+      - name: Executar script de atualização
         run: |
           python atualizar_espelho.py
