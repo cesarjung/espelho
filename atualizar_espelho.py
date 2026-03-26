@@ -5,6 +5,7 @@ import re
 import random
 import time
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from typing import List, Any, Dict, Tuple
 
 import gspread
@@ -63,7 +64,6 @@ MAX_RUN_TRIES = 3  # reiniciar o fluxo completo se tudo falhar
 def is_retryable_api_error(e: APIError) -> bool:
     """Detecta 429/5xx de forma robusta no APIError do gspread."""
     s = str(e)
-    # Aceita padrões [503], 503, status: 503, etc.
     return any(code in s for code in ("429", "500", "502", "503"))
 
 def with_retry(call, desc: str, max_tries: int = 9, base: float = 0.8, cap: float = 12.0):
@@ -83,7 +83,6 @@ def with_retry(call, desc: str, max_tries: int = 9, base: float = 0.8, cap: floa
             time.sleep(delay)
             attempt += 1
         except Exception as e:
-            # Retries leves para erros inesperados de rede
             if attempt >= min(3, max_tries):
                 print(f"❌ {desc}: falhou (tentativa {attempt}) → {e}")
                 raise
@@ -204,6 +203,16 @@ def calc_num_rows_from_columns(cols_dict: Dict[str, List[Any]]) -> int:
             max_len = len(v)
     return max_len
 
+def escrever_timestamp_final(wks):
+    """
+    Grava em B1 um timestamp fixo ao final da execução.
+    """
+    timestamp = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+    return with_retry(
+        lambda: wks.update("B1", [[timestamp]], value_input_option="USER_ENTERED"),
+        "update B1 timestamp"
+    )
+
 # =========================
 # Main (com reinício do fluxo)
 # =========================
@@ -212,7 +221,6 @@ def run_once():
     scopes = ["https://www.googleapis.com/auth/spreadsheets",
               "https://www.googleapis.com/auth/drive"]
 
-    # Usa credenciais a partir do arquivo credenciais.json
     creds = Credentials.from_service_account_file(CAMINHO_CRED, scopes=scopes)
     gc = gspread.authorize(creds)
     print("✅ Autenticado.")
@@ -289,6 +297,9 @@ def run_once():
             set_matrix(wks_dst, DEST_START_COL, start_row_dst, DEST_END_COL, chunk_end, chunk)
             i += len(chunk)
             start_row_dst = chunk_end + 1
+
+    print("🕒 Gravando timestamp final em B1…")
+    escrever_timestamp_final(wks_dst)
 
     print("✅ Concluído com sucesso!")
 
