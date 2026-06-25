@@ -61,21 +61,31 @@ MAX_RUN_TRIES = 3  # reiniciar o fluxo completo se tudo falhar
 # =========================
 # Retry helpers
 # =========================
-def is_retryable_api_error(e: APIError) -> bool:
-    """Detecta 429/5xx de forma robusta no APIError do gspread."""
-    s = str(e)
-    return any(code in s for code in ("429", "500", "502", "503"))
+def is_retryable_api_error(e: APIError, retry_404: bool = False) -> bool:
+    """Detecta 429/5xx de forma robusta no APIError do gspread.
 
-def with_retry(call, desc: str, max_tries: int = 9, base: float = 0.8, cap: float = 12.0):
+    Em surtos do Google Sheets, leituras às vezes retornam 404 espúrio
+    ('Requested entity was not found') mesmo com ID/aba corretos.
+    `retry_404=True` trata esse 404 como transitório — use só em leituras,
+    nunca em open/escrita (onde 404 = ID/aba realmente errado).
     """
-    Executa `call()` com retry exponencial + jitter para 429/5xx.
+    s = str(e)
+    codes = ("429", "500", "502", "503")
+    if retry_404:
+        codes = codes + ("404",)
+    return any(code in s for code in codes)
+
+def with_retry(call, desc: str, max_tries: int = 9, base: float = 0.8, cap: float = 12.0,
+               retry_404: bool = False):
+    """
+    Executa `call()` com retry exponencial + jitter para 429/5xx (e 404 se retry_404).
     """
     attempt = 1
     while True:
         try:
             return call()
         except APIError as e:
-            if not is_retryable_api_error(e) or attempt >= max_tries:
+            if not is_retryable_api_error(e, retry_404=retry_404) or attempt >= max_tries:
                 print(f"❌ {desc}: falhou (tentativa {attempt}/{max_tries}) → {e}")
                 raise
             delay = min(cap, base * (2 ** (attempt - 1))) + random.uniform(0, 0.5)
@@ -187,7 +197,7 @@ def batch_get_cols(wks, col_ranges: List[str], unformatted=True, serial_dates=Tr
             date_time_render_option="SERIAL_NUMBER" if serial_dates else "FORMATTED_STRING",
             major_dimension=None,
         )
-    return with_retry(_call, f"batch_get {len(col_ranges)} ranges")
+    return with_retry(_call, f"batch_get {len(col_ranges)} ranges", retry_404=True)
 
 def calc_num_rows_from_columns(cols_dict: Dict[str, List[Any]]) -> int:
     """
@@ -233,15 +243,14 @@ def run_once():
     wks_dst = with_retry(lambda: gc.open_by_key(ID_DESTINO).worksheet(ABA_DESTINO),
                          f"open destino '{ABA_DESTINO}'")
 
-    # ——— Cabeçalho (linha 3 da origem) ———
-    print("🧾 Lendo cabeçalho da ORIGEM (linha 3)…")
+    # ——— Cabeçalho (linha 3 da origem) — 1 batch_get em vez de 22 .get() ———
+    print("🧾 Lendo cabeçalho da ORIGEM (linha 3) em batch…")
+    header_ranges = [f"{src_col}3" for src_col, _, _ in MAPPINGS]
+    header_batch = batch_get_cols(wks_src, header_ranges, unformatted=True, serial_dates=True)
     headers: List[Any] = []
-    for src_col, _, _tipo in MAPPINGS:
-        vals = with_retry(lambda: wks_src.get(f"{src_col}3",
-                                              value_render_option="UNFORMATTED_VALUE",
-                                              date_time_render_option="SERIAL_NUMBER"),
-                          f"get {src_col}3")
-        headers.append(vals[0][0] if (vals and vals[0]) else "")
+    for i, _ in enumerate(MAPPINGS):
+        cell = header_batch[i] if i < len(header_batch) else []
+        headers.append(cell[0][0] if (cell and cell[0]) else "")
 
     # ——— Dados por batch_get (todas as colunas mapeadas) ———
     start_row = 4
